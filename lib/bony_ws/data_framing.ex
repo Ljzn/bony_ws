@@ -1,11 +1,23 @@
 defmodule BonyWs.DataFraming do
   import Bitwise, only: [bxor: 2]
 
-  def new(opcode, data, opts) do
+  def new(opcode, data, opts \\ []) do
+    mask = opts[:mask] || true
+    mask_key = opts[:mask_key] || :crypto.strong_rand_bytes(4)
+
+    masked_payload =
+      if mask do
+        mask(mask_key, data)
+      else
+        nil
+      end
+
     %{
-      opcode: nil,
-      mask: opts[:mask] || false,
-      payload: data
+      mask_key: mask_key,
+      opcode: opcode,
+      mask: mask,
+      payload: data,
+      masked_payload: masked_payload
     }
   end
 
@@ -24,20 +36,53 @@ defmodule BonyWs.DataFraming do
       end
 
     <<payload::size(payload_length)-bytes, rest::bytes>> = rest
+    mask = mask == 1
 
     %{
-      opcode: op(opcode),
-      mask: mask == 1,
-      payload: mask(masking_key, payload),
+      opcode: deop(opcode),
+      mask: mask,
+      payload: if(mask, do: mask(masking_key, payload), else: payload),
       masked_paylaod: payload,
       masking_key: masking_key,
       rest: rest
     }
   end
 
-  defp op(x) do
+  defp deop(x) do
     case x do
-      _ -> nil
+      0x1 ->
+        :text
+
+      0x2 ->
+        :binary
+
+      0x8 ->
+        :close
+
+      0x9 ->
+        :ping
+
+      0xA ->
+        :pong
+    end
+  end
+
+  defp enop(x) do
+    case x do
+      :text ->
+        0x1
+
+      :binary ->
+        0x2
+
+      :close ->
+        0x8
+
+      :ping ->
+        0x9
+
+      :pong ->
+        0xA
     end
   end
 
@@ -62,7 +107,14 @@ defmodule BonyWs.DataFraming do
     do_mask(key, data, key)
   end
 
-  def encode() do
+  def encode(%{opcode: op, mask: mask} = meta) do
+    op = enop(op)
+    payload = if mask, do: meta.masked_payload, else: meta.payload
+    mask_key = if mask, do: meta.mask_key, else: <<>>
+    mask = if mask, do: 1, else: 0
+
+    <<1::size(1), 0::size(3), op::size(4), mask::size(1),
+      encode_payload_length(byte_size(payload))::bitstring, mask_key::bytes, payload::bytes>>
   end
 
   defp payload_length(<<x::size(7), rest::binary>>) do
@@ -77,6 +129,19 @@ defmodule BonyWs.DataFraming do
       127 ->
         <<len::size(64), rest::binary>> = rest
         {len, rest}
+    end
+  end
+
+  defp encode_payload_length(x) do
+    case x do
+      x when x < 126 ->
+        <<x::size(7)>>
+
+      x when x <= 0xFFFF ->
+        <<126::size(7), x::size(16)>>
+
+      x ->
+        <<127::size(7), x::size(64)>>
     end
   end
 end

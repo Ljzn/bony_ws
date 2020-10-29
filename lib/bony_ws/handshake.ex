@@ -3,6 +3,7 @@ defmodule BonyWs.Handshake do
   RFC6455 4. Opening Handshake
   """
   use GenServer
+  alias BonyWs.DataFraming
 
   @concat_string "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -69,9 +70,20 @@ defmodule BonyWs.Handshake do
     {:noreply, %{state | phase: phase}}
   end
 
+  def handle_info({:request, data}, %{phase: :data_framing, socket: socket} = state) do
+    :gen_tcp.send(socket, data)
+    {:noreply, state}
+  end
+
   def handle_info(msg, state) do
     IO.inspect(msg)
     {:noreply, state}
+  end
+
+  defp handle_tcp(:data_framing, data, _) do
+    %{payload: payload} = DataFraming.decode(data)
+    IO.puts(payload)
+    {:data_framing, nil}
   end
 
   defp handle_tcp(:handshake, data, %{challenge: challenge}) do
@@ -122,6 +134,9 @@ defmodule BonyWs.Handshake do
     case msg do
       :close ->
         :gen_tcp.close(socket)
+
+      nil ->
+        nil
 
       msg ->
         :gen_tcp.send(socket, msg)
