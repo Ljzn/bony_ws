@@ -17,7 +17,12 @@ defmodule BonyWs.Handshake do
         get_ip(charlist_url)
       end
 
-    GenServer.start_link(__MODULE__, %{ip: ip, charlist_url: charlist_url, uri: uri})
+    GenServer.start_link(__MODULE__, %{
+      ip: ip,
+      charlist_url: charlist_url,
+      uri: uri,
+      parent: self()
+    })
   end
 
   def init(%{ip: ip, uri: uri} = meta) do
@@ -70,7 +75,11 @@ defmodule BonyWs.Handshake do
     {:noreply, %{state | phase: phase}}
   end
 
-  def handle_info({:request, data}, %{phase: :data_framing, socket: socket} = state) do
+  def handle_info({:send_msg, data}, %{phase: :data_framing, socket: socket} = state) do
+    data =
+      DataFraming.new(:binary, data)
+      |> DataFraming.encode()
+
     :gen_tcp.send(socket, data)
     {:noreply, state}
   end
@@ -80,9 +89,9 @@ defmodule BonyWs.Handshake do
     {:noreply, state}
   end
 
-  defp handle_tcp(:data_framing, data, _) do
+  defp handle_tcp(:data_framing, data, state) do
     %{payload: payload} = DataFraming.decode(data)
-    IO.puts(payload)
+    send(state.parent, {:ws_msg, payload})
     {:data_framing, nil}
   end
 

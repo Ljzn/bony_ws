@@ -2,6 +2,7 @@ defmodule BonyWs do
   @moduledoc """
   Documentation for `BonyWs`.
   """
+  import Kernel, except: [send: 2]
   alias BonyWs.{Handshake, DataFraming}
 
   @doc """
@@ -14,11 +15,10 @@ defmodule BonyWs do
     Handshake.start_link(uri)
   end
 
-  def request(pid, msg) do
-    data =
-      DataFraming.new(:binary, msg)
-      |> DataFraming.encode()
-
-    send(pid, {:request, data})
+  @doc """
+  Send msg to a websocket.
+  """
+  def send_msg(pid, msg) do
+    Process.send(pid, {:send_msg, msg}, [])
   end
 end

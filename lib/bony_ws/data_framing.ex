@@ -22,7 +22,7 @@ defmodule BonyWs.DataFraming do
   end
 
   def decode(bin) do
-    <<_fin::size(1), 0::size(3), opcode::integer-size(4), mask::size(1), rest::bitstring>> = bin
+    <<fin::size(1), 0::size(3), opcode::integer-size(4), mask::size(1), rest::bitstring>> = bin
     {payload_length, rest} = payload_length(rest)
 
     {masking_key, rest} =
@@ -39,6 +39,7 @@ defmodule BonyWs.DataFraming do
     mask = mask == 1
 
     %{
+      fin: fin,
       opcode: deop(opcode),
       mask: mask,
       payload: if(mask, do: mask(masking_key, payload), else: payload),
