@@ -1,6 +1,11 @@
 defmodule BonyWs.DataFraming do
   import Bitwise, only: [bxor: 2]
 
+  def pong() do
+    new(:pong, "")
+    |> encode()
+  end
+
   def new(opcode, data, opts \\ []) do
     mask = opts[:mask] || true
     mask_key = opts[:mask_key] || :crypto.strong_rand_bytes(4)

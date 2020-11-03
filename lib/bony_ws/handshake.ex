@@ -4,6 +4,7 @@ defmodule BonyWs.Handshake do
   """
   use GenServer
   alias BonyWs.DataFraming
+  require Logger
 
   @concat_string "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -71,7 +72,6 @@ defmodule BonyWs.Handshake do
 
   def handle_info({:tcp, _port, data}, state) do
     {phase, msg} = handle_tcp(state.phase, data, state)
-    respond_msg(state.socket, msg)
     {:noreply, %{state | phase: phase}}
   end
 
@@ -85,19 +85,35 @@ defmodule BonyWs.Handshake do
   end
 
   def handle_info(msg, state) do
-    IO.inspect(msg)
+    Logger.warn("[BonyWs] unexpected msg: #{msg}")
     {:noreply, state}
   end
 
-  defp handle_tcp(:data_framing, data, state) do
-    %{payload: payload} = DataFraming.decode(data)
-    send(state.parent, {:ws_msg, payload})
+  defp handle_tcp(:data_framing, data, %{socket: socket} = state) do
+    msg =
+      case DataFraming.decode(data) do
+        %{opcode: :ping} ->
+          :gen_tcp.send(socket, DataFraming.pong())
+
+        %{opcode: :pong} ->
+          :ok
+
+        %{opcode: :close} ->
+          :gen_tcp.close(socket)
+          send(state.parent, {:ws_msg, :closed})
+
+        %{fin: 1, payload: paylaod} ->
+          send(state.parent, {:ws_msg, {:done, paylaod}})
+
+        %{fin: 0, payload: payload} ->
+          send(state.parent, {:ws_msg, {:more, payload}})
+      end
+
     {:data_framing, nil}
   end
 
   defp handle_tcp(:handshake, data, %{challenge: challenge}) do
-    {:ok, {:http_response, _, 101, "Switching Protocols"}, rest} =
-      :erlang.decode_packet(:http_bin, data, []) |> IO.inspect()
+    {:ok, {:http_response, _, 101, _}, rest} = :erlang.decode_packet(:http_bin, data, [])
 
     case validate_headers(rest, fn
            {:Connection, up} ->
@@ -113,11 +129,10 @@ defmodule BonyWs.Handshake do
              true
          end) do
       :ok ->
-        IO.inspect("goto data_framing")
         {:data_framing, ""}
 
       {:error, wrong_header} ->
-        IO.inspect("falied because: #{inspect(wrong_header)}")
+        Logger.warn("falied because: #{inspect(wrong_header)}")
         {:failed, :close}
     end
   end
@@ -137,18 +152,5 @@ defmodule BonyWs.Handshake do
           {:halt, :ok}
       end
     end)
-  end
-
-  defp respond_msg(socket, msg) do
-    case msg do
-      :close ->
-        :gen_tcp.close(socket)
-
-      nil ->
-        nil
-
-      msg ->
-        :gen_tcp.send(socket, msg)
-    end
   end
 end

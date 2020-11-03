@@ -1,6 +1,23 @@
 # BonyWs
 
-**TODO: Add description**
+A light weight websocket client. You can handle data frame by frame.
+
+Example:
+
+```ex
+iex> {:ok, pid} = BonyWs.connect "ws://echo.websocket.org"
+{:ok, #PID<0.228.0>}
+iex> BonyWs.send_msg pid, "hello"
+:ok  
+iex> flush
+{:ws_msg, {:done, "hello"}}
+:ok
+```
+
+## Limitations
+
+Only support ipv4 addresses and domains without SSL now.
+
 
 ## Installation
 
