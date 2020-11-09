@@ -23,3 +23,7 @@ erl_crash.dump
 bony_ws-*.tar
 
 .elixir_ls/
+
+rfc6455.txt
+config/fuzzingserver.json
+reports/

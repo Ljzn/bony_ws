@@ -12,10 +12,15 @@ defmodule BonyWs.Handshake do
     charlist_url = String.to_charlist(uri.host)
 
     ip =
-      if is_ipv4(charlist_url) do
-        charlist_url
-      else
-        get_ip(charlist_url)
+      cond do
+        is_ipv4(charlist_url) ->
+          charlist_url
+
+        charlist_url == 'localhost' ->
+          charlist_url
+
+        true ->
+          get_ip(charlist_url)
       end
 
     GenServer.start_link(__MODULE__, %{
@@ -71,7 +76,7 @@ defmodule BonyWs.Handshake do
   end
 
   def handle_info({:tcp, _port, data}, state) do
-    {phase, msg} = handle_tcp(state.phase, data, state)
+    {phase, _msg} = handle_tcp(state.phase, data, state)
     {:noreply, %{state | phase: phase}}
   end
 
@@ -85,29 +90,28 @@ defmodule BonyWs.Handshake do
   end
 
   def handle_info(msg, state) do
-    Logger.warn("[BonyWs] unexpected msg: #{msg}")
+    Logger.warn("[BonyWs] unexpected msg: #{inspect(msg)}")
     {:noreply, state}
   end
 
   defp handle_tcp(:data_framing, data, %{socket: socket} = state) do
-    msg =
-      case DataFraming.decode(data) do
-        %{opcode: :ping} ->
-          :gen_tcp.send(socket, DataFraming.pong())
+    case DataFraming.decode(data) do
+      %{opcode: :ping} ->
+        :gen_tcp.send(socket, DataFraming.pong())
 
-        %{opcode: :pong} ->
-          :ok
+      %{opcode: :pong} ->
+        :ok
 
-        %{opcode: :close} ->
-          :gen_tcp.close(socket)
-          send(state.parent, {:ws_msg, :closed})
+      %{opcode: :close} ->
+        :gen_tcp.close(socket)
+        send(state.parent, {:ws_msg, :closed})
 
-        %{fin: 1, payload: paylaod} ->
-          send(state.parent, {:ws_msg, {:done, paylaod}})
+      %{fin: 1, payload: paylaod} ->
+        send(state.parent, {:ws_msg, {:done, paylaod}})
 
-        %{fin: 0, payload: payload} ->
-          send(state.parent, {:ws_msg, {:more, payload}})
-      end
+      %{fin: 0, payload: payload} ->
+        send(state.parent, {:ws_msg, {:more, payload}})
+    end
 
     {:data_framing, nil}
   end
